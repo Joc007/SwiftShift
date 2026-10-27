@@ -99,9 +99,15 @@ struct StrokeGestureTracker {
             let fired = recognizer.add(s.delta).map { (zone: zone, direction: $0) }
             return (true, fired)
         case .ended, .cancelled:
+            // Only the end of a gesture we are following belongs to it; a stray cancel from a
+            // later finger rest must reach the app.
+            let wasInGesture = isInGesture
             isInGesture = false
-            return (zone != .none, nil)
-        case .mayBegin, .none:
+            return (wasInGesture && zone != .none, nil)
+        case .mayBegin:
+            // Fingers touching down outside a gesture end any leftover momentum zone.
+            if !isInGesture { zone = .none }
+        case .none:
             break
         }
         guard s.momentum != .none else { return (false, nil) }
@@ -111,7 +117,53 @@ struct StrokeGestureTracker {
     }
 }
 
+/// One entry of the WindowServer window list (front to back).
+struct WindowInfo: Equatable {
+    var id: CGWindowID
+    var pid: pid_t
+    var layer: Int
+    var alpha: Double
+    var bounds: CGRect
+}
+
+enum HitTarget: Equatable {
+    case none
+    case dock(WindowInfo)
+    case window(WindowInfo)
+}
+
 enum StrokeLogic {
+    /// The first visible window under the pointer decides: an ordinary app window is a
+    /// candidate, the Dock is asked about icons (`skipDock` looks behind it on a miss), and
+    /// anything else on top (banners, menus, popovers, launchers, our own UI) blocks strokes,
+    /// so scrolling it behaves as usual.
+    static func hitTarget(at point: CGPoint, windows: [WindowInfo], ownPID: pid_t, dockPID: pid_t?, skipDock: Bool = false) -> HitTarget {
+        for window in windows where window.alpha > 0 && window.bounds.contains(point) {
+            if window.pid == dockPID {
+                if skipDock { continue }
+                return .dock(window)
+            }
+            if window.pid == ownPID || window.layer != 0 { return .none }
+            return .window(window)
+        }
+        return .none
+    }
+
+    /// Walks up from `start` (itself included) for at most `maxSteps` elements and returns the
+    /// first match. `isExpired` is checked before every step, so a slow chain of lookups gives
+    /// up instead of holding the caller.
+    static func firstAncestor<T>(from start: T, maxSteps: Int, isExpired: () -> Bool, parent: (T) -> T?, matches: (T) -> Bool) -> T? {
+        var current: T? = start
+        var steps = 0
+        while let element = current, steps < maxSteps {
+            if isExpired() { return nil }
+            if matches(element) { return element }
+            current = parent(element)
+            steps += 1
+        }
+        return nil
+    }
+
     /// With natural scrolling the content follows the fingers, so the deltas already point
     /// the way the fingers moved; with classic scrolling they point the opposite way.
     static func fingerDelta(scrollingDeltaX: CGFloat, scrollingDeltaY: CGFloat, invertedFromDevice: Bool) -> FingerDelta {

@@ -15,6 +15,7 @@ final class StrokeManager {
 
     private struct Snapshot {
         var anywhereModifier: NSEvent.ModifierFlags?
+        var dockPID: pid_t?
         var ignoredBundleIDs: Set<String> = []
         var screens: [CGRect] = []
         var isInGesture = false
@@ -24,14 +25,21 @@ final class StrokeManager {
     private static let titleBarHeight: CGFloat = 28
     /// Below the title bar, only this deep into the window is worth asking AX for a toolbar.
     private static let toolbarSearchDepth: CGFloat = 120
-    /// Cap for AX calls made from the tap thread, so a hung app cannot stall input.
-    private static let hitTestTimeout: Float = 0.1
+    /// Cap for each AX call made from the tap thread, so a hung app cannot stall input.
+    private static let hitTestTimeout: Float = 0.05
+    /// Cap for the whole toolbar lookup: a slow-but-alive app gets this long, then the scroll
+    /// passes through as ordinary scrolling.
+    private static let toolbarLookupBudget: CFTimeInterval = 0.03
+    private static let toolbarSearchMaxSteps = 8
     /// Cap for AX calls on `actionQueue`: slow-but-alive apps (Electron) still get their writes.
     private static let actionTimeout: Float = 0.25
 
     private let lock = NSLock()
     private var snapshot = Snapshot()
-    private var tracker = StrokeGestureTracker() // tap thread only
+    /// During a tap rebuild the old tap thread can still be inside `handle` when the new one
+    /// starts; this keeps them from touching `tracker` at the same time.
+    private let handleLock = NSLock()
+    private var tracker = StrokeGestureTracker() // guarded by handleLock
     private var records: [CGWindowID: SnapRecord] = [:] // actionQueue only
     private var tap: StrokeTap? // main thread only
     private var isEnabled = false
@@ -48,7 +56,10 @@ final class StrokeManager {
         observe(.default, .shortcutsDidChange) { $0.refreshSnapshot() }
         observe(.default, .ignoredAppsDidChange) { $0.refreshSnapshot() }
         // Same events that silently kill the shared tap (see FIXES.md).
-        observe(workspace, NSWorkspace.didWakeNotification) { $0.rebuildTap() }
+        observe(workspace, NSWorkspace.didWakeNotification) {
+            $0.refreshSnapshot() // displays may have changed while asleep
+            $0.rebuildTap()
+        }
         observe(workspace, NSWorkspace.sessionDidBecomeActiveNotification) { $0.rebuildTap() }
         observe(.default, NSApplication.didChangeScreenParametersNotification) {
             $0.refreshSnapshot()
@@ -113,11 +124,13 @@ final class StrokeManager {
 
     private func refreshSnapshot() {
         let anywhere = StrokeLogic.anywhereModifier(for: ShortcutsManager.shared.load(for: .move))
+        let dockPID = NSRunningApplication.runningApplications(withBundleIdentifier: Self.dockBundleID).first?.processIdentifier
         let ignored = Set(PreferencesManager.getIgnoredApps())
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
         let screens = NSScreen.screens.map { StrokeLogic.axRect(fromAppKit: $0.visibleFrame, primaryScreenHeight: primaryHeight) }
         withSnapshot {
             $0.anywhereModifier = anywhere
+            $0.dockPID = dockPID
             $0.ignoredBundleIDs = ignored
             $0.screens = screens
         }
@@ -144,8 +157,10 @@ final class StrokeManager {
                 invertedFromDevice: nsEvent.isDirectionInvertedFromDevice
             )
         )
+        handleLock.lock()
         let result = tracker.handle(sample) { hitTest(at: event.location, flags: event.flags) }
         let inGesture = tracker.isInGesture
+        handleLock.unlock()
         withSnapshot { $0.isInGesture = inGesture }
         if let fired = result.fired {
             actionQueue.async { [weak self] in self?.perform(zone: fired.zone, direction: fired.direction) }
@@ -173,33 +188,36 @@ final class StrokeManager {
     /// app). AX is only asked about Dock items and, just below a title bar, for a toolbar.
     private func hitTest(at point: CGPoint, flags: CGEventFlags) -> StrokeZone {
         let snap = withSnapshot { $0 }
-        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: AnyObject]] ?? []
-        for info in windows {
-            guard let pid = info[kCGWindowOwnerPID as String] as? pid_t, pid != ownPID,
+        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: AnyObject]] ?? []
+        let windows: [WindowInfo] = list.compactMap { info in
+            guard let pid = info[kCGWindowOwnerPID as String] as? pid_t,
                   let boundsDict = info[kCGWindowBounds as String] as? [String: CGFloat],
-                  let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary),
-                  bounds.contains(point),
-                  (info[kCGWindowAlpha as String] as? Double ?? 1) > 0 else { continue }
-            let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier
-            if bundleID == Self.dockBundleID {
-                // The Dock owns more than the icon strip; only an app icon counts.
-                if let url = dockItemURL(dockPID: pid, at: point) { return .dockIcon(appURL: url) }
-                continue
-            }
-            guard (info[kCGWindowLayer as String] as? Int ?? 0) == 0 else { continue }
-            guard let bundleID, !snap.ignoredBundleIDs.contains(bundleID) else { return .none }
-
-            let windowID = info[kCGWindowNumber as String] as? CGWindowID ?? 0
-            let zone = StrokeZone.window(id: windowID, pid: pid, frame: bounds)
-            let held = NSEvent.ModifierFlags(rawValue: UInt(flags.rawValue)).swiftShiftShortcutFlags
-            if let anywhere = snap.anywhereModifier, held == anywhere { return zone }
-            let depth = point.y - bounds.minY
-            if depth <= Self.titleBarHeight { return zone }
-            if depth <= Self.toolbarSearchDepth, let bottom = toolbarBottom(pid: pid, windowFrame: bounds), point.y <= bottom {
-                return zone
-            }
-            return .none
+                  let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary) else { return nil }
+            return WindowInfo(
+                id: info[kCGWindowNumber as String] as? CGWindowID ?? 0,
+                pid: pid,
+                layer: info[kCGWindowLayer as String] as? Int ?? 0,
+                alpha: info[kCGWindowAlpha as String] as? Double ?? 1,
+                bounds: bounds
+            )
         }
+
+        var target = StrokeLogic.hitTarget(at: point, windows: windows, ownPID: ownPID, dockPID: snap.dockPID)
+        if case .dock(let dock) = target {
+            if let url = dockItemURL(dockPID: dock.pid, at: point) { return .dockIcon(appURL: url) }
+            // The Dock owns more than the icon strip; look behind it.
+            target = StrokeLogic.hitTarget(at: point, windows: windows, ownPID: ownPID, dockPID: snap.dockPID, skipDock: true)
+        }
+        guard case .window(let window) = target,
+              let bundleID = NSRunningApplication(processIdentifier: window.pid)?.bundleIdentifier,
+              !snap.ignoredBundleIDs.contains(bundleID) else { return .none }
+
+        let zone = StrokeZone.window(id: window.id, pid: window.pid, frame: window.bounds)
+        let held = NSEvent.ModifierFlags(rawValue: UInt(flags.rawValue)).swiftShiftShortcutFlags
+        if let anywhere = snap.anywhereModifier, held == anywhere { return zone }
+        let depth = point.y - window.bounds.minY
+        if depth <= Self.titleBarHeight { return zone }
+        if depth <= Self.toolbarSearchDepth, isInToolbar(pid: window.pid, at: point) { return zone }
         return .none
     }
 
@@ -216,28 +234,45 @@ final class StrokeManager {
         return (value as! CFURL) as URL
     }
 
-    /// Bottom edge (AX coordinates) of the window's toolbar, if it has one.
-    private func toolbarBottom(pid: pid_t, windowFrame: CGRect) -> CGFloat? {
-        guard let window = Self.axWindow(pid: pid, matching: windowFrame, timeout: Self.hitTestTimeout) else { return nil }
-        var children: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(window, kAXChildrenAttribute as CFString, &children) == .success,
-              let children = children as? [AXUIElement] else { return nil }
-        for child in children.map({ Self.capped($0) }) where Self.string(child, kAXRoleAttribute) == kAXToolbarRole {
-            if let frame = Self.frame(of: child) { return frame.maxY }
-        }
-        return nil
+    /// Whether the element under the pointer sits inside a toolbar: one hit test into the app,
+    /// then a short walk up its parents, all within `toolbarLookupBudget`.
+    private func isInToolbar(pid: pid_t, at point: CGPoint) -> Bool {
+        let started = CFAbsoluteTimeGetCurrent()
+        let expired = { CFAbsoluteTimeGetCurrent() - started > Self.toolbarLookupBudget }
+        let app = Self.capped(AXUIElementCreateApplication(pid))
+        var hit: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(app, Float(point.x), Float(point.y), &hit) == .success, let hit else { return false }
+        let toolbar = StrokeLogic.firstAncestor(
+            from: Self.capped(hit),
+            maxSteps: Self.toolbarSearchMaxSteps,
+            isExpired: expired,
+            parent: { element in
+                // Stop at the window: anything above it is not part of this window's toolbar.
+                guard Self.string(element, kAXRoleAttribute) != kAXWindowRole else { return nil }
+                var parent: CFTypeRef?
+                guard AXUIElementCopyAttributeValue(element, kAXParentAttribute as CFString, &parent) == .success,
+                      let parent, CFGetTypeID(parent) == AXUIElementGetTypeID() else { return nil }
+                return Self.capped(parent as! AXUIElement)
+            },
+            matches: { Self.string($0, kAXRoleAttribute) == kAXToolbarRole }
+        )
+        return toolbar != nil
     }
 
     // MARK: - Actions (actionQueue)
 
     func perform(zone: StrokeZone, direction: StrokeDirection) {
         os_log("StrokeManager: %{public}@ on %{public}@", log: .default, type: .info, "\(direction)", "\(zone)")
+        // Holding the Move modifier for a stroke also starts Move. End it before touching the
+        // window, so its last queued write cannot land after (and undo) the snap; a new Move
+        // starts on the next modifier press. Main never waits on actionQueue, so sync is safe.
+        DispatchQueue.main.sync { MouseTracker.shared.stopTracking(for: .move) }
         switch zone {
         case .none:
             return
         case .dockIcon(let appURL):
-            guard direction == .down, minimiseFrontmostWindow(appURL: appURL) else { return }
-            afterAction()
+            guard direction == .down else { return }
+            minimiseFrontmostWindow(appURL: appURL)
         case .window(let id, let pid, let frame):
             performOnWindow(id: id, pid: pid, frame: frame, direction: direction)
         }
@@ -254,8 +289,6 @@ final class StrokeManager {
         switch action {
         case .none:
             records[id] = record
-            afterAction() // a captured swipe ends Move even when there is nothing to snap
-            return
         case .snap(let target):
             Self.setFrame(target, of: window)
             // Store what the app actually accepted (minimum sizes), so the next swipe down
@@ -268,10 +301,10 @@ final class StrokeManager {
             AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanTrue)
             records[id] = nil
         }
-        afterAction()
     }
 
     /// Dock swipe down: one window per swipe, most recently used first.
+    @discardableResult
     private func minimiseFrontmostWindow(appURL: URL) -> Bool {
         let path = appURL.resolvingSymlinksInPath().path
         guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleURL?.resolvingSymlinksInPath().path == path }) else { return false }
@@ -287,15 +320,6 @@ final class StrokeManager {
             return AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanTrue) == .success
         }
         return false
-    }
-
-    /// Holding the Move modifier for a stroke also starts Move. A stroke ends Move for the rest
-    /// of that key hold, so a pointer nudge after the swipe does not drag the snapped window;
-    /// releasing and pressing the modifier again starts a new Move.
-    private func afterAction() {
-        DispatchQueue.main.async {
-            MouseTracker.shared.stopTracking(for: .move)
-        }
     }
 
     /// Drop records of windows that no longer exist.

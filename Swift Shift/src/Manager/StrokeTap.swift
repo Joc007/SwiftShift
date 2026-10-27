@@ -21,7 +21,7 @@ final class StrokeTap {
     }
 
     var isEnabled: Bool {
-        guard let port else { return false }
+        guard thread != nil, let port else { return false }
         return CGEvent.tapIsEnabled(tap: port)
     }
 
@@ -45,7 +45,8 @@ final class StrokeTap {
         }
         if let runLoop, let source { CFRunLoopRemoveSource(runLoop, source, .commonModes) }
         if let runLoop { CFRunLoopStop(runLoop) }
-        port = nil
+        // `port` stays set: a callback still running on the old thread may read it, and
+        // re-enabling an invalidated port is harmless.
         source = nil
         runLoop = nil
         thread = nil

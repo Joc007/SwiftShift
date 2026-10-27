@@ -199,4 +199,69 @@ final class StrokeLogicTests: XCTestCase {
         XCTAssertEqual(GesturesView.caption(for: move(KeyboardShortcut(keyCode: 0, modifierFlags: .command))),
                        "Swipe on a title bar or Dock icon.")
     }
+
+    // MARK: - Review fixes
+
+    func testTracker_restAfterSlowInZoneSwipePassesThrough() {
+        var t = StrokeGestureTracker()
+        _ = t.handle(sample(.began)) { self.windowZone }
+        _ = t.handle(sample(.changed, down: 45)) { self.windowZone }
+        _ = t.handle(sample(.ended)) { self.windowZone } // slow lift: no momentum follows
+        XCTAssertFalse(t.handle(sample(.mayBegin)) { self.windowZone }.swallow)
+        XCTAssertFalse(t.handle(sample(.cancelled)) { self.windowZone }.swallow)
+    }
+
+    private func info(_ id: CGWindowID, pid: pid_t = 10, layer: Int = 0, alpha: Double = 1, bounds: CGRect = CGRect(x: 0, y: 0, width: 800, height: 600)) -> WindowInfo {
+        WindowInfo(id: id, pid: pid, layer: layer, alpha: alpha, bounds: bounds)
+    }
+
+    let point = CGPoint(x: 100, y: 10)
+
+    func testHitTarget_normalWindow() {
+        XCTAssertEqual(StrokeLogic.hitTarget(at: point, windows: [info(1)], ownPID: 99, dockPID: 50), .window(info(1)))
+    }
+
+    func testHitTarget_overlayAboveWindowBlocks() {
+        let banner = info(2, pid: 20, layer: 23, bounds: CGRect(x: 0, y: 0, width: 300, height: 80))
+        XCTAssertEqual(StrokeLogic.hitTarget(at: point, windows: [banner, info(1)], ownPID: 99, dockPID: 50), HitTarget.none)
+    }
+
+    func testHitTarget_ownWindowBlocks() {
+        XCTAssertEqual(StrokeLogic.hitTarget(at: point, windows: [info(2, pid: 99, layer: 101), info(1)], ownPID: 99, dockPID: 50), HitTarget.none)
+    }
+
+    func testHitTarget_transparentOverlayIgnored() {
+        XCTAssertEqual(StrokeLogic.hitTarget(at: point, windows: [info(2, pid: 20, layer: 25, alpha: 0), info(1)], ownPID: 99, dockPID: 50), .window(info(1)))
+    }
+
+    func testHitTarget_windowsNotUnderPointIgnored() {
+        let elsewhere = info(2, pid: 20, layer: 25, bounds: CGRect(x: 500, y: 500, width: 50, height: 50))
+        XCTAssertEqual(StrokeLogic.hitTarget(at: point, windows: [elsewhere, info(1)], ownPID: 99, dockPID: 50), .window(info(1)))
+    }
+
+    func testHitTarget_dockThenBehindDockWhenSkipped() {
+        let dock = info(3, pid: 50, layer: 20)
+        XCTAssertEqual(StrokeLogic.hitTarget(at: point, windows: [dock, info(1)], ownPID: 99, dockPID: 50), .dock(dock))
+        XCTAssertEqual(StrokeLogic.hitTarget(at: point, windows: [dock, info(1)], ownPID: 99, dockPID: 50, skipDock: true), .window(info(1)))
+    }
+
+    func testHitTarget_nothingUnderPointer() {
+        XCTAssertEqual(StrokeLogic.hitTarget(at: CGPoint(x: 2000, y: 2000), windows: [info(1)], ownPID: 99, dockPID: 50), HitTarget.none)
+    }
+
+    func testFirstAncestor_findsMatchUpTheChain() {
+        // 5 -> 4 -> 3 -> ...; looking for 3
+        XCTAssertEqual(StrokeLogic.firstAncestor(from: 5, maxSteps: 8, isExpired: { false }, parent: { $0 > 0 ? $0 - 1 : nil }, matches: { $0 == 3 }), 3)
+    }
+
+    func testFirstAncestor_stopsAfterMaxSteps() {
+        XCTAssertNil(StrokeLogic.firstAncestor(from: 10, maxSteps: 3, isExpired: { false }, parent: { $0 - 1 }, matches: { $0 == 0 }))
+    }
+
+    func testFirstAncestor_expiredDeadlineMakesNoCalls() {
+        var calls = 0
+        let found = StrokeLogic.firstAncestor(from: 5, maxSteps: 8, isExpired: { true }, parent: { calls += 1; return $0 - 1 }, matches: { calls += 1; return $0 == 5 })
+        XCTAssertNil(found)
+        XCTAssertEqual(calls, 0)
+    }
 }
