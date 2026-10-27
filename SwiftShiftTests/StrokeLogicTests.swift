@@ -101,4 +101,73 @@ final class StrokeLogicTests: XCTestCase {
         let left = StrokeLogic.frame(for: .leftHalf, in: visible)
         XCTAssertEqual(StrokeLogic.windowAction(direction: .left, current: left, visible: visible, record: nil).action, StrokeAction.none)
     }
+
+    // MARK: - Gesture tracker (what gets swallowed)
+
+    let windowZone = StrokeZone.window(id: 1, pid: 1, frame: .zero)
+
+    private func sample(_ phase: ScrollPhase, momentum: MomentumPhase = .none, down: CGFloat = 0, continuous: Bool = true) -> ScrollSample {
+        ScrollSample(isContinuous: continuous, phase: phase, momentum: momentum, delta: FingerDelta(right: 0, down: down))
+    }
+
+    func testTracker_mouseWheelPassesThrough() {
+        var t = StrokeGestureTracker()
+        var lookups = 0
+        let r = t.handle(sample(.began, continuous: false)) { lookups += 1; return self.windowZone }
+        XCTAssertFalse(r.swallow)
+        XCTAssertEqual(lookups, 0)
+    }
+
+    func testTracker_outOfZoneNeverSwallowed() {
+        var t = StrokeGestureTracker()
+        let samples = [sample(.began)] + Array(repeating: sample(.changed, down: 30), count: 5)
+            + [sample(.ended), sample(.none, momentum: .began), sample(.none, momentum: .changed), sample(.none, momentum: .ended)]
+        for s in samples {
+            let r = t.handle(s) { .none }
+            XCTAssertFalse(r.swallow)
+            XCTAssertNil(r.fired)
+        }
+    }
+
+    func testTracker_inZoneSwallowsAndFiresOnce() {
+        var t = StrokeGestureTracker()
+        XCTAssertTrue(t.handle(sample(.began)) { self.windowZone }.swallow)
+        var fired: [StrokeDirection] = []
+        for _ in 0..<3 {
+            let r = t.handle(sample(.changed, down: 15)) { self.windowZone }
+            XCTAssertTrue(r.swallow)
+            if let f = r.fired { fired.append(f.direction); XCTAssertEqual(f.zone, windowZone) }
+        }
+        XCTAssertEqual(fired, [.down])
+        XCTAssertNil(t.handle(sample(.changed, down: 50)) { self.windowZone }.fired)
+    }
+
+    func testTracker_swallowsMomentumAfterInZoneGesture() {
+        var t = StrokeGestureTracker()
+        _ = t.handle(sample(.began)) { self.windowZone }
+        _ = t.handle(sample(.changed, down: 45)) { self.windowZone }
+        for s in [sample(.ended), sample(.none, momentum: .began), sample(.none, momentum: .changed), sample(.none, momentum: .ended)] {
+            XCTAssertTrue(t.handle(s) { self.windowZone }.swallow)
+        }
+        XCTAssertFalse(t.handle(sample(.began)) { .none }.swallow)
+        XCTAssertFalse(t.handle(sample(.changed, down: 10)) { .none }.swallow)
+        XCTAssertFalse(t.handle(sample(.none, momentum: .changed)) { .none }.swallow)
+    }
+
+    func testTracker_zoneLookedUpOnlyAtBegan() {
+        var t = StrokeGestureTracker()
+        var lookups = 0
+        let zone: () -> StrokeZone = { lookups += 1; return self.windowZone }
+        _ = t.handle(sample(.began), zoneAtBegin: zone)
+        for _ in 0..<3 { _ = t.handle(sample(.changed, down: 5), zoneAtBegin: zone) }
+        XCTAssertEqual(lookups, 1)
+    }
+
+    func testTracker_inGestureUntilFingersLift() {
+        var t = StrokeGestureTracker()
+        _ = t.handle(sample(.began)) { self.windowZone }
+        XCTAssertTrue(t.isInGesture)
+        _ = t.handle(sample(.ended)) { self.windowZone }
+        XCTAssertFalse(t.isInGesture)
+    }
 }

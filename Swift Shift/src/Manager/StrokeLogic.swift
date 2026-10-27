@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 // Pure logic for swipe strokes: no AX, no event tap, so it is unit-testable.
 // All rects are in AX (top-left origin, primary screen) coordinates unless named otherwise.
@@ -56,6 +57,59 @@ enum StrokeAction: Equatable {
     case snap(CGRect)
     case restore(CGRect)
     case minimise
+}
+
+enum ScrollPhase { case none, mayBegin, began, changed, ended, cancelled }
+
+enum MomentumPhase { case none, began, changed, ended }
+
+struct ScrollSample {
+    var isContinuous: Bool
+    var phase: ScrollPhase
+    var momentum: MomentumPhase
+    var delta: FingerDelta
+}
+
+/// Where a gesture started: a window (title bar, or anywhere with the Move modifier held),
+/// an app's Dock icon, or nowhere strokes apply.
+enum StrokeZone: Equatable {
+    case none
+    case window(id: CGWindowID, pid: pid_t, frame: CGRect)
+    case dockIcon(appURL: URL)
+}
+
+/// Follows one trackpad scroll gesture at a time. The zone is looked up once, when the
+/// fingers start moving; every event of an in-zone gesture, including the momentum after
+/// the fingers lift, is swallowed so the content underneath does not scroll as well.
+/// Anything outside a zone, and any non-continuous (mouse wheel) event, passes through.
+struct StrokeGestureTracker {
+    private(set) var isInGesture = false
+    private var zone: StrokeZone = .none
+    private var recognizer = StrokeRecognizer()
+
+    mutating func handle(_ s: ScrollSample, zoneAtBegin: () -> StrokeZone) -> (swallow: Bool, fired: (zone: StrokeZone, direction: StrokeDirection)?) {
+        guard s.isContinuous else { return (false, nil) }
+        switch s.phase {
+        case .began:
+            zone = zoneAtBegin()
+            recognizer = StrokeRecognizer()
+            isInGesture = true
+            return (zone != .none, nil)
+        case .changed:
+            guard isInGesture, zone != .none else { return (false, nil) }
+            let fired = recognizer.add(s.delta).map { (zone: zone, direction: $0) }
+            return (true, fired)
+        case .ended, .cancelled:
+            isInGesture = false
+            return (zone != .none, nil)
+        case .mayBegin, .none:
+            break
+        }
+        guard s.momentum != .none else { return (false, nil) }
+        let swallow = zone != .none
+        if s.momentum == .ended { zone = .none }
+        return (swallow, nil)
+    }
 }
 
 enum StrokeLogic {
