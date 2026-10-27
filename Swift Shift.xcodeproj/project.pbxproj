@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A11CE00100000000000000A4 /* StrokeLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00100000000000000A3 /* StrokeLogicTests.swift */; };
+		A11CE00100000000000000A2 /* StrokeLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00100000000000000A1 /* StrokeLogic.swift */; };
 		17087D952DD254890006852C /* IgnoredAppsTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17087D942DD254890006852C /* IgnoredAppsTabView.swift */; };
 		172E0BD52B32F36300D5CDA7 /* MouseTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 172E0BD42B32F36300D5CDA7 /* MouseTracker.swift */; };
 		172E0BD62B32F36300D5CDA8 /* AXWindowWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 172E0BD72B32F36300D5CDA9 /* AXWindowWriter.swift */; };
@@ -52,6 +54,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A11CE00100000000000000A3 /* StrokeLogicTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StrokeLogicTests.swift; path = SwiftShiftTests/StrokeLogicTests.swift; sourceTree = SOURCE_ROOT; };
+		A11CE00100000000000000A1 /* StrokeLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrokeLogic.swift; sourceTree = "<group>"; };
 		1500434D466F0EB81368D3B9 /* PermissionsManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PermissionsManager.swift; path = "Swift Shift/src/Manager/PermissionsManager.swift"; sourceTree = "<group>"; };
 		17087D942DD254890006852C /* IgnoredAppsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IgnoredAppsTabView.swift; sourceTree = "<group>"; };
 		172E0BD42B32F36300D5CDA7 /* MouseTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MouseTracker.swift; sourceTree = "<group>"; };
@@ -144,6 +148,7 @@
 				172E0BD42B32F36300D5CDA7 /* MouseTracker.swift */,
 				172E0BD72B32F36300D5CDA9 /* AXWindowWriter.swift */,
 				174652CD2B33345200241CE6 /* WindowManager.swift */,
+				A11CE00100000000000000A1 /* StrokeLogic.swift */,
 			);
 			path = Manager;
 			sourceTree = "<group>";
@@ -183,6 +188,7 @@
 				38E53EACF577219DA37EB8D0 /* Constants.swift */,
 				DF311F2632748B7B9EAF0B5E /* KeyboardShortcutTests.swift */,
 				5EFB661166B07FADAC97D611 /* WindowManagerTests.swift */,
+				A11CE00100000000000000A3 /* StrokeLogicTests.swift */,
 				39C8392320D65A939A324CA3 /* PreferencesManagerTests.swift */,
 			);
 			sourceTree = "<group>";
@@ -379,6 +385,7 @@
 				E2E6F5EA2B3EF03C005B0D96 /* Constants.swift in Sources */,
 				E2CABBA82B44D69B00D66D43 /* UpdatesManager.swift in Sources */,
 				174652CE2B33345200241CE6 /* WindowManager.swift in Sources */,
+				A11CE00100000000000000A2 /* StrokeLogic.swift in Sources */,
 				E236331E2B44669200C0E61F /* Preferences.swift in Sources */,
 				1781A5E22B31EE4A00F27910 /* App.swift in Sources */,
 				177FB2412B31F9B900B11BA3 /* PermissionsRequestView.swift in Sources */,
@@ -393,6 +400,7 @@
 			files = (
 				6FA028238EDB1C81BAE30648 /* KeyboardShortcutTests.swift in Sources */,
 				261AF3357AC7FA793AFC77B8 /* WindowManagerTests.swift in Sources */,
+				A11CE00100000000000000A4 /* StrokeLogicTests.swift in Sources */,
 				8AF06071C16FF49D8ABEB1B0 /* PreferencesManagerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
