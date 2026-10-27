@@ -181,6 +181,7 @@ struct UserShortcut {
 
 extension Notification.Name {
   static let shortcutsDidChange = Notification.Name("shortcutsDidChange")
+  static let ignoredAppsDidChange = Notification.Name("ignoredAppsDidChange")
 }
 
 class ShortcutsManager {

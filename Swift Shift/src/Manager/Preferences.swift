@@ -61,6 +61,7 @@ class PreferencesManager {
     static func setUserIgnoredApps(_ apps: [String]) {
         UserDefaults.standard.set(apps, forKey: PreferenceKey.ignoredApps.rawValue)
         invalidateIgnoredAppsCache()
+        NotificationCenter.default.post(name: .ignoredAppsDidChange, object: nil)
     }
     
     static func addIgnoredApp(_ bundleId: String) {
