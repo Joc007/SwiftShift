@@ -1,5 +1,4 @@
-import CoreGraphics
-import Foundation
+import AppKit
 
 // Pure logic for swipe strokes: no AX, no event tap, so it is unit-testable.
 // All rects are in AX (top-left origin, primary screen) coordinates unless named otherwise.
@@ -155,5 +154,13 @@ enum StrokeLogic {
         let targetFrame = frame(for: target, in: visible)
         if framesMatch(current, targetFrame) { return (.none, live) }
         return (.snap(targetFrame), SnapRecord(preSnap: live?.preSnap ?? current, snapped: targetFrame))
+    }
+
+    /// The Move shortcut's modifiers widen the stroke zone to the whole window, but only
+    /// when Move is a keyboard-enabled, modifier-only shortcut (fn, fn+shift, ...).
+    static func anywhereModifier(for move: UserShortcut?) -> NSEvent.ModifierFlags? {
+        guard let move, move.keyboardEnabled, let shortcut = move.keyboardShortcut,
+              shortcut.isModifierOnly, !shortcut.modifierFlags.isEmpty else { return nil }
+        return shortcut.modifierFlags
     }
 }

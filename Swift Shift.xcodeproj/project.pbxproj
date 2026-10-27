@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A11CE00100000000000000A6 /* GesturesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00100000000000000A5 /* GesturesView.swift */; };
 		A11CE00100000000000000A4 /* StrokeLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00100000000000000A3 /* StrokeLogicTests.swift */; };
 		A11CE00100000000000000A2 /* StrokeLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00100000000000000A1 /* StrokeLogic.swift */; };
 		17087D952DD254890006852C /* IgnoredAppsTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17087D942DD254890006852C /* IgnoredAppsTabView.swift */; };
@@ -54,6 +55,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A11CE00100000000000000A5 /* GesturesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GesturesView.swift; sourceTree = "<group>"; };
 		A11CE00100000000000000A3 /* StrokeLogicTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StrokeLogicTests.swift; path = SwiftShiftTests/StrokeLogicTests.swift; sourceTree = SOURCE_ROOT; };
 		A11CE00100000000000000A1 /* StrokeLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrokeLogic.swift; sourceTree = "<group>"; };
 		1500434D466F0EB81368D3B9 /* PermissionsManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PermissionsManager.swift; path = "Swift Shift/src/Manager/PermissionsManager.swift"; sourceTree = "<group>"; };
@@ -129,6 +131,7 @@
 				1781A5E32B31EE4A00F27910 /* AppView.swift */,
 				E236331F2B4466F800C0E61F /* PreferencesView.swift */,
 				1798B11F2B4812D600E07964 /* SettingsView.swift */,
+				A11CE00100000000000000A5 /* GesturesView.swift */,
 				1798B1212B48131400E07964 /* InfoView.swift */,
 				17087D942DD254890006852C /* IgnoredAppsTabView.swift */,
 				E2CABBA42B447AEA00D66D43 /* UpdatesView.swift */,
@@ -372,6 +375,7 @@
 			files = (
 				1798B1222B48131400E07964 /* InfoView.swift in Sources */,
 				1798B1202B4812D600E07964 /* SettingsView.swift in Sources */,
+				A11CE00100000000000000A6 /* GesturesView.swift in Sources */,
 				177FB2512B32160B00B11BA3 /* AppDelegate.swift in Sources */,
 				E23633202B4466F800C0E61F /* PreferencesView.swift in Sources */,
 				177FB24C2B31FF1E00B11BA3 /* ShortcutView.swift in Sources */,

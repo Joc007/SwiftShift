@@ -63,6 +63,14 @@ struct SettingsView: View {
 
       Divider().opacity(0.5)
 
+      // Gestures section
+      VStack(alignment: .leading, spacing: 6) {
+        SectionHeader(title: "Gestures", icon: "hand.draw")
+        GesturesView()
+      }
+
+      Divider().opacity(0.5)
+
       // Shortcuts section
       VStack(alignment: .leading, spacing: 6) {
         SectionHeader(title: "Shortcuts", icon: "keyboard")

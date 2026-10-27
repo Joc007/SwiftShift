@@ -13,6 +13,7 @@ final class PreferencesManagerTests: XCTestCase {
         defaults.removeObject(forKey: PreferenceKey.useQuadrants.rawValue)
         defaults.removeObject(forKey: PreferenceKey.snapToWindows.rawValue)
         defaults.removeObject(forKey: PreferenceKey.requireMouseClick.rawValue)
+        defaults.removeObject(forKey: PreferenceKey.swipeGestures.rawValue)
         // Default to migration-complete to prevent tests from accidentally triggering migration
         defaults.set(true, forKey: PreferenceKey.didMigrateDefaultIgnoredApps.rawValue)
         defaults.synchronize()
@@ -28,6 +29,7 @@ final class PreferencesManagerTests: XCTestCase {
         defaults.removeObject(forKey: PreferenceKey.useQuadrants.rawValue)
         defaults.removeObject(forKey: PreferenceKey.snapToWindows.rawValue)
         defaults.removeObject(forKey: PreferenceKey.requireMouseClick.rawValue)
+        defaults.removeObject(forKey: PreferenceKey.swipeGestures.rawValue)
         defaults.synchronize()
         PreferencesManager.invalidateIgnoredAppsCache()
         super.tearDown()
@@ -226,5 +228,11 @@ final class PreferencesManagerTests: XCTestCase {
         let apps = PreferencesManager.getUserIgnoredApps()
         // Should only return the custom apps, not merged with defaults
         XCTAssertEqual(Set(apps), Set(customApps))
+    }
+
+    // MARK: - Swipe gestures
+
+    func testSwipeGestures_defaultsOff() {
+        XCTAssertFalse(PreferencesManager.loadBool(for: .swipeGestures))
     }
 }

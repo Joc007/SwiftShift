@@ -170,4 +170,33 @@ final class StrokeLogicTests: XCTestCase {
         _ = t.handle(sample(.ended)) { self.windowZone }
         XCTAssertFalse(t.isInGesture)
     }
+
+    // MARK: - Anywhere modifier and settings caption
+
+    private func move(_ shortcut: KeyboardShortcut?, keyboardEnabled: Bool = true) -> UserShortcut {
+        UserShortcut(type: .move, keyboardShortcut: shortcut, mouseButton: .none, keyboardEnabled: keyboardEnabled)
+    }
+
+    func testAnywhereModifier_modifierOnlyMove() {
+        XCTAssertEqual(StrokeLogic.anywhereModifier(for: move(KeyboardShortcut(keyCode: nil, modifierFlags: .function))), .function)
+    }
+
+    func testAnywhereModifier_keyComboMoveHasNone() {
+        XCTAssertNil(StrokeLogic.anywhereModifier(for: move(KeyboardShortcut(keyCode: 0, modifierFlags: .command))))
+    }
+
+    func testAnywhereModifier_keyboardDisabledHasNone() {
+        XCTAssertNil(StrokeLogic.anywhereModifier(for: move(KeyboardShortcut(keyCode: nil, modifierFlags: .function), keyboardEnabled: false)))
+        XCTAssertNil(StrokeLogic.anywhereModifier(for: nil))
+    }
+
+    func testGesturesCaption_withAnywhereModifier() {
+        XCTAssertEqual(GesturesView.caption(for: move(KeyboardShortcut(keyCode: nil, modifierFlags: .function))),
+                       "Swipe on a title bar or Dock icon. Hold fn to swipe anywhere on the window.")
+    }
+
+    func testGesturesCaption_withoutAnywhereModifier() {
+        XCTAssertEqual(GesturesView.caption(for: move(KeyboardShortcut(keyCode: 0, modifierFlags: .command))),
+                       "Swipe on a title bar or Dock icon.")
+    }
 }
